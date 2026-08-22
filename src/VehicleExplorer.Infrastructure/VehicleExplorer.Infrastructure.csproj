@@ -10,4 +10,11 @@
     <ProjectReference Include="..\VehicleExplorer.Application\VehicleExplorer.Application.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The vPIC contracts and the Refit interface are internal on purpose. Tests and
+         NSubstitute's proxy generator are the only things allowed past that. -->
+    <InternalsVisibleTo Include="VehicleExplorer.Infrastructure.Tests" />
+    <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+  </ItemGroup>
+
 </Project>

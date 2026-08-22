@@ -4,4 +4,7 @@
     <Project Path="src/VehicleExplorer.Application/VehicleExplorer.Application.csproj" />
     <Project Path="src/VehicleExplorer.Infrastructure/VehicleExplorer.Infrastructure.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/VehicleExplorer.Infrastructure.Tests/VehicleExplorer.Infrastructure.Tests.csproj" />
+  </Folder>
 </Solution>
