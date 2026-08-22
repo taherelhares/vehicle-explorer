@@ -7,4 +7,9 @@ internal sealed class VehicleCatalogService(INhtsaClient client) : IVehicleCatal
 {
     public Task<IReadOnlyList<MakeDto>> GetMakesAsync(CancellationToken cancellationToken) =>
         client.GetMakesAsync(cancellationToken);
+
+    public Task<IReadOnlyList<VehicleTypeDto>> GetVehicleTypesAsync(
+        int makeId,
+        CancellationToken cancellationToken) =>
+        client.GetVehicleTypesAsync(makeId, cancellationToken);
 }

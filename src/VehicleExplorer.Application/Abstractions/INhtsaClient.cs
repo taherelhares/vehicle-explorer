@@ -11,4 +11,8 @@ namespace VehicleExplorer.Application.Abstractions;
 public interface INhtsaClient
 {
     Task<IReadOnlyList<MakeDto>> GetMakesAsync(CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<VehicleTypeDto>> GetVehicleTypesAsync(
+        int makeId,
+        CancellationToken cancellationToken);
 }

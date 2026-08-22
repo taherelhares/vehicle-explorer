@@ -1,6 +1,19 @@
 @VehicleExplorer.Api_HostAddress = http://localhost:5020
 
-GET {{VehicleExplorer.Api_HostAddress}}/weatherforecast/
+### Every vehicle make
+GET {{VehicleExplorer.Api_HostAddress}}/api/vehicles/makes
+Accept: application/json
+
+### Vehicle types for a known make (448 = Honda)
+GET {{VehicleExplorer.Api_HostAddress}}/api/vehicles/makes/448/vehicle-types
+Accept: application/json
+
+### Unknown make — expect 200 with an empty array, not a 404
+GET {{VehicleExplorer.Api_HostAddress}}/api/vehicles/makes/999999/vehicle-types
+Accept: application/json
+
+### Malformed id — expect 404 from the route constraint, no handler involved
+GET {{VehicleExplorer.Api_HostAddress}}/api/vehicles/makes/abc/vehicle-types
 Accept: application/json
 
 ###

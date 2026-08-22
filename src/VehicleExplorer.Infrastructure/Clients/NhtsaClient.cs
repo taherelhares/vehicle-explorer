@@ -21,6 +21,20 @@ internal sealed class NhtsaClient(INhtsaApi api) : INhtsaClient
             .Select(make => new MakeDto(make.MakeId, make.MakeName!))];
     }
 
+    public async Task<IReadOnlyList<VehicleTypeDto>> GetVehicleTypesAsync(
+        int makeId,
+        CancellationToken cancellationToken)
+    {
+        using var response = await api.GetVehicleTypesForMakeAsync(makeId, cancellationToken);
+
+        // A make vPIC does not recognise comes back as a successful, empty envelope
+        // rather than a 404, so an unknown id is indistinguishable from a make with no
+        // recorded types. Both are reported to the caller as an empty list.
+        return [.. Unwrap(response).Results
+            .Where(type => !string.IsNullOrWhiteSpace(type.VehicleTypeName))
+            .Select(type => new VehicleTypeDto(type.VehicleTypeId, type.VehicleTypeName!))];
+    }
+
     /// <summary>
     /// Returns the payload of a successful vPIC response, or raises the single
     /// application-level failure that the API layer knows how to present.
