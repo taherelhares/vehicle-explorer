@@ -1,0 +1,21 @@
+# Normalise line endings. Text files are stored with LF in the repository and
+# checked out with the platform's native ending, so Windows and CI stop
+# producing whole-file diffs against each other.
+* text=auto
+
+# Tooling that is happier with CRLF regardless of platform.
+*.sln     text eol=crlf
+*.slnx    text eol=crlf
+*.csproj  text eol=crlf
+*.props   text eol=crlf
+*.targets text eol=crlf
+
+# Shell scripts must stay LF or they will not run.
+*.sh text eol=lf
+
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary

@@ -6,4 +6,8 @@
     <PackageReference Include="Refit.HttpClientFactory" Version="11.2.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\VehicleExplorer.Application\VehicleExplorer.Application.csproj" />
+  </ItemGroup>
+
 </Project>

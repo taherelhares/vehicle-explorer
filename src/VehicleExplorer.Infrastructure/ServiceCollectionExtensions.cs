@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using VehicleExplorer.Application.Abstractions;
 using VehicleExplorer.Infrastructure.Clients;
 using VehicleExplorer.Infrastructure.Options;
 
@@ -12,6 +13,8 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.AddExternalApi<INhtsaApi, NhtsaOptions>(configuration);
+
+        services.AddScoped<INhtsaClient, NhtsaClient>();
 
         return services;
     }

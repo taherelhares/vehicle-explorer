@@ -5,6 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\VehicleExplorer.Application\VehicleExplorer.Application.csproj" />
     <ProjectReference Include="..\VehicleExplorer.Infrastructure\VehicleExplorer.Infrastructure.csproj" />
   </ItemGroup>
 
