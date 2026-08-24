@@ -14,6 +14,8 @@ public sealed class StubNhtsaClient : INhtsaClient
 
     public Func<int, IReadOnlyList<VehicleTypeDto>> VehicleTypes { get; set; } = _ => [];
 
+    public Func<int, int, string?, IReadOnlyList<ModelDto>> Models { get; set; } = (_, _, _) => [];
+
     public Task<IReadOnlyList<MakeDto>> GetMakesAsync(CancellationToken cancellationToken) =>
         Task.FromResult(Makes());
 
@@ -21,4 +23,11 @@ public sealed class StubNhtsaClient : INhtsaClient
         int makeId,
         CancellationToken cancellationToken) =>
         Task.FromResult(VehicleTypes(makeId));
+
+    public Task<IReadOnlyList<ModelDto>> GetModelsAsync(
+        int makeId,
+        int year,
+        string? vehicleType,
+        CancellationToken cancellationToken) =>
+        Task.FromResult(Models(makeId, year, vehicleType));
 }

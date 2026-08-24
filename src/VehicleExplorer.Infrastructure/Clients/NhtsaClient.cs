@@ -63,7 +63,7 @@ internal sealed class NhtsaClient(INhtsaApi api) : INhtsaClient
         if (!response.IsSuccessStatusCode)
         {
             throw new NhtsaUnavailableException(
-                $"The NHTSA vPIC service responded with {response.StatusCode}.",
+                $"The NHTSA vPIC service responded with {(int?)response.StatusCode}.",
                 response.Error!);
         }
 

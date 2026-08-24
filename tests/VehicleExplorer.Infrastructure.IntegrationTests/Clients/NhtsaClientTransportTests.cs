@@ -101,6 +101,53 @@ public sealed class NhtsaClientTransportTests
         });
     }
 
+    [Fact]
+    public async Task GetModelsAsync_WhenNoVehicleTypeIsSupplied_RequestsTheUnfilteredRoute()
+    {
+        const string body = """
+        {
+          "Count": 1,
+          "Message": "Results returned successfully",
+          "SearchCriteria": "Make ID:474 | ModelYear:2015",
+          "Results": [ { "Make_ID": 474, "Make_Name": "HONDA", "Model_ID": 3235, "Model_Name": "CB1100" } ]
+        }
+        """;
+
+        var (client, handler) = CreateClient(HttpStatusCode.OK, body);
+
+        var models = await client.GetModelsAsync(474, 2015, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal((3235, "CB1100"), (Assert.Single(models).Id, models[0].Name));
+        Assert.Equal(
+            "/api/vehicles/GetModelsForMakeIdYear/makeId/474/modelyear/2015?format=json",
+            handler.LastRequestUri?.PathAndQuery);
+    }
+
+    [Fact]
+    public async Task GetModelsAsync_WhenAVehicleTypeIsSupplied_AddsItAsAQueryParameter()
+    {
+        const string body = """
+        {
+          "Count": 1,
+          "Message": "Results returned successfully",
+          "SearchCriteria": "Make ID:474 | ModelYear:2015",
+          "Results": [ { "Model_ID": 1861, "Model_Name": "Accord" } ]
+        }
+        """;
+
+        var (client, handler) = CreateClient(HttpStatusCode.OK, body);
+
+        await client.GetModelsAsync(474, 2015, "car", TestContext.Current.CancellationToken);
+
+        // The filter has to survive the merge with the format parameter already in the
+        // route template, which is the part that would break silently.
+        var query = handler.LastRequestUri?.PathAndQuery;
+
+        Assert.StartsWith("/api/vehicles/GetModelsForMakeIdYear/makeId/474/modelyear/2015?", query);
+        Assert.Contains("format=json", query);
+        Assert.Contains("vehicleType=car", query);
+    }
+
     private static (INhtsaClient Client, StubHttpMessageHandler Handler) CreateClient(
         HttpStatusCode statusCode,
         string body)

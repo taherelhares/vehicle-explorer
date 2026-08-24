@@ -137,6 +137,84 @@ public sealed class NhtsaClientTests
             Times.Once);
     }
 
+    [Fact]
+    public async Task GetModelsAsync_WhenVpicReturnsModels_MapsThemToApplicationTypes()
+    {
+        SetupModels(Success(new NhtsaResponse<NhtsaModel>
+        {
+            Results =
+            [
+                new NhtsaModel { ModelId = 1861, ModelName = "Accord" },
+                new NhtsaModel { ModelId = 1863, ModelName = "Civic" }
+            ]
+        }));
+
+        var models = await CreateClient().GetModelsAsync(
+            474, 2015, null, TestContext.Current.CancellationToken);
+
+        Assert.Collection(
+            models,
+            model => Assert.Equal((1861, "Accord"), (model.Id, model.Name)),
+            model => Assert.Equal((1863, "Civic"), (model.Id, model.Name)));
+    }
+
+    [Fact]
+    public async Task GetModelsAsync_WhenAModelHasNoUsableName_ExcludesItFromTheResult()
+    {
+        SetupModels(Success(new NhtsaResponse<NhtsaModel>
+        {
+            Results =
+            [
+                new NhtsaModel { ModelId = 1, ModelName = "  " },
+                new NhtsaModel { ModelId = 1861, ModelName = "Accord" }
+            ]
+        }));
+
+        var models = await CreateClient().GetModelsAsync(
+            474, 2015, null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1861, Assert.Single(models).Id);
+    }
+
+    [Fact]
+    public async Task GetModelsAsync_WhenAVehicleTypeIsSupplied_PassesItUpstream()
+    {
+        SetupModels(Success(new NhtsaResponse<NhtsaModel>()));
+
+        await CreateClient().GetModelsAsync(
+            474, 2015, "  car  ", TestContext.Current.CancellationToken);
+
+        // Trimmed, so a stray space in the query string does not reach vPIC as part of
+        // the filter value.
+        _api.Verify(
+            api => api.GetModelsForMakeYearAsync(474, 2015, "car", It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task GetModelsAsync_WhenNoVehicleTypeIsSupplied_OmitsTheFilterUpstream(
+        string? vehicleType)
+    {
+        SetupModels(Success(new NhtsaResponse<NhtsaModel>()));
+
+        await CreateClient().GetModelsAsync(
+            474, 2015, vehicleType, TestContext.Current.CancellationToken);
+
+        // Null rather than an empty string: Refit leaves null query parameters off the
+        // request entirely, which is what makes one method cover both calls.
+        _api.Verify(
+            api => api.GetModelsForMakeYearAsync(474, 2015, null, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    private void SetupModels(IApiResponse<NhtsaResponse<NhtsaModel>> response) =>
+        _api.Setup(api => api.GetModelsForMakeYearAsync(
+                It.IsAny<int>(), It.IsAny<int>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(response);
+
     private void SetupMakes(IApiResponse<NhtsaResponse<NhtsaMake>> response) =>
         _api.Setup(api => api.GetAllMakesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(response);
