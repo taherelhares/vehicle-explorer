@@ -12,4 +12,11 @@ internal sealed class VehicleCatalogService(INhtsaClient client) : IVehicleCatal
         int makeId,
         CancellationToken cancellationToken) =>
         client.GetVehicleTypesAsync(makeId, cancellationToken);
+
+    public Task<IReadOnlyList<ModelDto>> GetModelsAsync(
+        int makeId,
+        int year,
+        string? vehicleType,
+        CancellationToken cancellationToken) =>
+        client.GetModelsAsync(makeId, year, vehicleType, cancellationToken);
 }

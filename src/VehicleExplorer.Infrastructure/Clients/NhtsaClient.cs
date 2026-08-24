@@ -1,6 +1,7 @@
 using Refit;
 using VehicleExplorer.Application.Abstractions;
 using VehicleExplorer.Application.Models;
+using VehicleExplorer.Infrastructure.Models.Nhtsa;
 
 namespace VehicleExplorer.Infrastructure.Clients;
 
@@ -35,6 +36,24 @@ internal sealed class NhtsaClient(INhtsaApi api) : INhtsaClient
             .Select(type => new VehicleTypeDto(type.VehicleTypeId, type.VehicleTypeName!))];
     }
 
+    public async Task<IReadOnlyList<ModelDto>> GetModelsAsync(
+        int makeId,
+        int year,
+        string? vehicleType,
+        CancellationToken cancellationToken)
+    {
+        // The filter is pushed upstream rather than applied to a larger result set here.
+        // A blank value is normalised to null so Refit leaves the parameter off entirely.
+        var filter = string.IsNullOrWhiteSpace(vehicleType) ? null : vehicleType.Trim();
+
+        using var response = await api.GetModelsForMakeYearAsync(
+            makeId, year, filter, cancellationToken);
+
+        return [.. Unwrap(response).Results
+            .Where(model => !string.IsNullOrWhiteSpace(model.ModelName))
+            .Select(model => new ModelDto(model.ModelId, model.ModelName!))];
+    }
+
     /// <summary>
     /// Returns the payload of a successful vPIC response, or raises the single
     /// application-level failure that the API layer knows how to present.
@@ -44,7 +63,7 @@ internal sealed class NhtsaClient(INhtsaApi api) : INhtsaClient
         if (!response.IsSuccessStatusCode)
         {
             throw new NhtsaUnavailableException(
-                $"The NHTSA vPIC service responded with {(int?)response.StatusCode}.",
+                $"The NHTSA vPIC service responded with {response.StatusCode}.",
                 response.Error!);
         }
 

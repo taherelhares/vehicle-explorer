@@ -23,20 +23,14 @@ internal interface INhtsaApi
         int makeId,
         CancellationToken cancellationToken);
 
+    /// <param name="vehicleType">
+    /// Optional filter. vPIC accepts it as a query parameter, and Refit omits null query
+    /// parameters, so one method covers both the filtered and unfiltered calls.
+    /// </param>
     [Get("/api/vehicles/GetModelsForMakeIdYear/makeId/{makeId}/modelyear/{year}?format=json")]
     Task<IApiResponse<NhtsaResponse<NhtsaModel>>> GetModelsForMakeYearAsync(
         int makeId,
         int year,
-        CancellationToken cancellationToken);
-
-    /// <summary>
-    /// vPIC accepts an optional <c>vehicleType</c> segment on the models route, so the
-    /// filter is pushed upstream rather than applied after the fact.
-    /// </summary>
-    [Get("/api/vehicles/GetModelsForMakeIdYear/makeId/{makeId}/modelyear/{year}/vehicleType/{vehicleType}?format=json")]
-    Task<IApiResponse<NhtsaResponse<NhtsaModel>>> GetModelsForMakeYearAndTypeAsync(
-        int makeId,
-        int year,
-        string vehicleType,
+        string? vehicleType,
         CancellationToken cancellationToken);
 }

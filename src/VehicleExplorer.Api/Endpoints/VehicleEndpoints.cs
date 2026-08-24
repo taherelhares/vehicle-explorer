@@ -27,6 +27,20 @@ internal static class VehicleEndpoints
             .WithName("GetVehicleTypesForMake")
             .WithSummary("The vehicle types recorded for a given make.");
 
+        // No year range is enforced. vPIC answers an implausible year with an empty result
+        // rather than an error, and model binding already rejects anything that is not an
+        // integer, so a rule here would only turn a truthful answer into a 400.
+        vehicles.MapGet("/makes/{makeId:int:min(1)}/models", async (
+                int makeId,
+                int year,
+                string? vehicleType,
+                IVehicleCatalogService catalog,
+                CancellationToken cancellationToken) =>
+                TypedResults.Ok(await catalog.GetModelsAsync(
+                    makeId, year, vehicleType, cancellationToken)))
+            .WithName("GetModelsForMakeAndYear")
+            .WithSummary("Models for a make and model year, optionally narrowed to one vehicle type.");
+
         return endpoints;
     }
 }

@@ -15,4 +15,11 @@ public interface INhtsaClient
     Task<IReadOnlyList<VehicleTypeDto>> GetVehicleTypesAsync(
         int makeId,
         CancellationToken cancellationToken);
+
+    /// <param name="vehicleType">Optional. When omitted, every model for the year is returned.</param>
+    Task<IReadOnlyList<ModelDto>> GetModelsAsync(
+        int makeId,
+        int year,
+        string? vehicleType,
+        CancellationToken cancellationToken);
 }
