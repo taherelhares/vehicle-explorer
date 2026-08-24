@@ -30,7 +30,7 @@ public sealed class NhtsaClientTests
             ]
         }));
 
-        var makes = await CreateClient().GetMakesAsync(CancellationToken.None);
+        var makes = await CreateClient().GetMakesAsync(TestContext.Current.CancellationToken);
 
         Assert.Collection(
             makes,
@@ -53,7 +53,7 @@ public sealed class NhtsaClientTests
             ]
         }));
 
-        var makes = await CreateClient().GetMakesAsync(CancellationToken.None);
+        var makes = await CreateClient().GetMakesAsync(TestContext.Current.CancellationToken);
 
         var make = Assert.Single(makes);
         Assert.Equal(448, make.Id);
@@ -64,7 +64,7 @@ public sealed class NhtsaClientTests
     {
         SetupMakes(Success(new NhtsaResponse<NhtsaMake>()));
 
-        var makes = await CreateClient().GetMakesAsync(CancellationToken.None);
+        var makes = await CreateClient().GetMakesAsync(TestContext.Current.CancellationToken);
 
         Assert.Empty(makes);
     }
@@ -79,7 +79,7 @@ public sealed class NhtsaClientTests
         SetupMakes(Failure<NhtsaResponse<NhtsaMake>>(statusCode));
 
         var exception = await Assert.ThrowsAsync<NhtsaUnavailableException>(
-            () => CreateClient().GetMakesAsync(CancellationToken.None));
+            () => CreateClient().GetMakesAsync(TestContext.Current.CancellationToken));
 
         Assert.Contains(((int)statusCode).ToString(), exception.Message);
     }
@@ -90,7 +90,7 @@ public sealed class NhtsaClientTests
         SetupMakes(Success<NhtsaResponse<NhtsaMake>>(content: null));
 
         await Assert.ThrowsAsync<NhtsaUnavailableException>(
-            () => CreateClient().GetMakesAsync(CancellationToken.None));
+            () => CreateClient().GetMakesAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -105,7 +105,7 @@ public sealed class NhtsaClientTests
             ]
         }));
 
-        var types = await CreateClient().GetVehicleTypesAsync(448, CancellationToken.None);
+        var types = await CreateClient().GetVehicleTypesAsync(448, TestContext.Current.CancellationToken);
 
         Assert.Collection(
             types,
@@ -120,7 +120,7 @@ public sealed class NhtsaClientTests
         // 404, so "no such make" and "make with no recorded types" are the same result.
         SetupVehicleTypes(999_999, Success(new NhtsaResponse<NhtsaVehicleType>()));
 
-        var types = await CreateClient().GetVehicleTypesAsync(999_999, CancellationToken.None);
+        var types = await CreateClient().GetVehicleTypesAsync(999_999, TestContext.Current.CancellationToken);
 
         Assert.Empty(types);
     }
@@ -130,7 +130,7 @@ public sealed class NhtsaClientTests
     {
         SetupVehicleTypes(448, Success(new NhtsaResponse<NhtsaVehicleType>()));
 
-        await CreateClient().GetVehicleTypesAsync(448, CancellationToken.None);
+        await CreateClient().GetVehicleTypesAsync(448, TestContext.Current.CancellationToken);
 
         _api.Verify(
             api => api.GetVehicleTypesForMakeAsync(448, It.IsAny<CancellationToken>()),
