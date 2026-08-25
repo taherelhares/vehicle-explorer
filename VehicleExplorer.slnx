@@ -6,6 +6,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/VehicleExplorer.Api.IntegrationTests/VehicleExplorer.Api.IntegrationTests.csproj" />
+    <Project Path="tests/VehicleExplorer.Application.Tests/VehicleExplorer.Application.Tests.csproj" />
     <Project Path="tests/VehicleExplorer.Infrastructure.IntegrationTests/VehicleExplorer.Infrastructure.IntegrationTests.csproj" />
     <Project Path="tests/VehicleExplorer.Infrastructure.Tests/VehicleExplorer.Infrastructure.Tests.csproj" />
   </Folder>

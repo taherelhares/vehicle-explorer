@@ -16,6 +16,18 @@ public sealed class StubNhtsaClient : INhtsaClient
 
     public Func<int, int, string?, IReadOnlyList<ModelDto>> Models { get; set; } = (_, _, _) => [];
 
+    /// <summary>
+    /// Restores the do-nothing defaults. Called before every test so that one test's
+    /// setup cannot reach the next, which cleanup at the end of a test cannot guarantee:
+    /// a failed assertion skips it.
+    /// </summary>
+    public void Reset()
+    {
+        Makes = () => [];
+        VehicleTypes = _ => [];
+        Models = (_, _, _) => [];
+    }
+
     public Task<IReadOnlyList<MakeDto>> GetMakesAsync(CancellationToken cancellationToken) =>
         Task.FromResult(Makes());
 

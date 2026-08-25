@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using VehicleExplorer.Application.Abstractions;
 
@@ -27,5 +28,21 @@ public sealed class VehicleApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureTestServices(services =>
             services.AddScoped<INhtsaClient>(_ => Nhtsa));
+    }
+
+    /// <summary>
+    /// Returns the host to a known state. The catalogue cache is a singleton and this
+    /// factory is shared by every test in a class, so without this an answer cached by
+    /// one test would be served to the next — and a test that expects the upstream to be
+    /// called would never reach it.
+    /// </summary>
+    public void Reset()
+    {
+        Nhtsa.Reset();
+
+        if (Services.GetRequiredService<IMemoryCache>() is MemoryCache cache)
+        {
+            cache.Clear();
+        }
     }
 }
