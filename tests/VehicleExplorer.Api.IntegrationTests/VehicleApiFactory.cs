@@ -14,6 +14,8 @@ namespace VehicleExplorer.Api.IntegrationTests;
 /// </summary>
 public sealed class VehicleApiFactory : WebApplicationFactory<Program>
 {
+    public const string AllowedOrigin = "https://client.test";
+
     public StubNhtsaClient Nhtsa { get; } = new();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -25,6 +27,10 @@ public sealed class VehicleApiFactory : WebApplicationFactory<Program>
         // NhtsaOptions is validated on start; supply the one required value explicitly
         // rather than depending on which appsettings file the host happens to find.
         builder.UseSetting("Nhtsa:BaseAddress", "https://vpic.nhtsa.dot.gov/");
+
+        // One known-good origin, so the CORS policy can be tested for what it refuses as
+        // well as for what it allows.
+        builder.UseSetting("Cors:AllowedOrigins:0", AllowedOrigin);
 
         builder.ConfigureTestServices(services =>
             services.AddScoped<INhtsaClient>(_ => Nhtsa));
