@@ -1,0 +1,12 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vehicle-explorer-api
+    ports:
+      - "8080:8080"
+    environment:
+      # Production keeps HTTPS redirection out of the pipeline, which is what you want
+      # behind a container: the host, not the app, decides about TLS.
+      ASPNETCORE_ENVIRONMENT: Production

@@ -1,0 +1,19 @@
+# Build output and IDE state never belong in the build context: they bloat the upload,
+# and a host-built obj/ would collide with the one the SDK image produces.
+**/bin/
+**/obj/
+**/.vs/
+**/*.user
+TestResults/
+_to_delete/
+
+.git/
+.gitignore
+.gitattributes
+
+client/node_modules/
+client/dist/
+
+Dockerfile
+.dockerignore
+docker-compose.yml
