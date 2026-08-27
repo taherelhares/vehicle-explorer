@@ -1,0 +1,405 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: >
+  Vehicle Explorer — one container on one EC2 instance, behind CloudFront for free
+  HTTPS, fed by ECR, deployed by GitHub Actions over OIDC and SSM. Deleting this
+  stack removes everything it created, which is the point of putting it here rather
+  than clicking through the console.
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: taherelhares/vehicle-explorer
+    Description: owner/repo allowed to assume the deploy role.
+    AllowedPattern: "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+
+  GitHubBranch:
+    Type: String
+    Default: main
+    Description: Only pushes to this branch may assume the deploy role.
+
+  CloudFrontPrefixListId:
+    Type: String
+    Description: >
+      Managed prefix list for CloudFront origin-facing IPs, so the instance answers
+      CloudFront and nothing else. Find it with:
+      aws ec2 describe-managed-prefix-lists --region me-central-1
+        --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing
+        --query "PrefixLists[0].PrefixListId" --output text
+    AllowedPattern: "^pl-[0-9a-f]+$"
+
+  CreateOidcProvider:
+    Type: String
+    Default: "yes"
+    AllowedValues: ["yes", "no"]
+    Description: >
+      An AWS account may hold only one provider per URL. Set to "no" if this account
+      already trusts token.actions.githubusercontent.com from earlier work.
+
+  RepositoryName:
+    Type: String
+    Default: vehicle-explorer
+    Description: Must match ECR_REPOSITORY in the deploy workflow. ECR requires lowercase.
+    AllowedPattern: "^[a-z0-9][a-z0-9._/-]*$"
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    Description: t3.micro is the free-tier-eligible size. t2.micro is not offered in me-central-1.
+
+  LatestAmiId:
+    Type: "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    Description: >
+      Resolved at deploy time rather than hard-coded, because AMI ids differ per region
+      and go stale. AL2023 ships Docker in its repos and the SSM agent preinstalled.
+
+Conditions:
+  ShouldCreateOidcProvider: !Equals [!Ref CreateOidcProvider, "yes"]
+
+Mappings:
+  # CloudFront managed policies. These ids are the same in every account and region.
+  CloudFrontPolicies:
+    Cache:
+      Optimized: 658327ea-f89d-4fab-a63d-7e88639e58f6
+      Disabled: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+    OriginRequest:
+      AllViewerExceptHostHeader: b689b0a8-53d0-40ab-baf2-68738e2966ac
+
+Resources:
+  # ----------------------------------------------------------------------------------
+  # Network. A dedicated VPC rather than the default one: the default VPC is shared with
+  # everything else in the account and cannot be deleted with the stack.
+  # ----------------------------------------------------------------------------------
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      # Required for the instance to receive a public DNS name, which is what CloudFront
+      # uses as its origin — a custom origin must be a hostname, never a bare IP.
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-vpc"
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-igw"
+
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-public"
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: HTTP from CloudFront only; no inbound SSH.
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        # Without this restriction the instance's own address serves the app over plain
+        # HTTP, and anyone who finds it bypasses CloudFront and the TLS it terminates.
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourcePrefixListId: !Ref CloudFrontPrefixListId
+          Description: CloudFront origin-facing ranges
+      # Port 22 is deliberately absent. Shell access is via SSM Session Manager, which
+      # needs no open port and no key pair to lose.
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}-instance"
+
+  # ----------------------------------------------------------------------------------
+  # Image registry
+  # ----------------------------------------------------------------------------------
+  Repository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Ref RepositoryName
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      # Every push adds a SHA-tagged image and storage is billed per GB. Ten is enough
+      # to roll back a few deploys without the repository growing without limit.
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep the ten most recent images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+
+  # ----------------------------------------------------------------------------------
+  # The instance
+  # ----------------------------------------------------------------------------------
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        # Lets the deploy reach the box without SSH, and lets the box pull its own image.
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    DependsOn: GatewayAttachment
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref Instance
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfile
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref InstanceSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            DeleteOnTermination: true
+            Encrypted: true
+      # Installs Docker and lays down the script the deploy calls. It does not start a
+      # container: at stack creation the registry is empty, and the first GitHub Actions
+      # run is what puts an image there.
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+
+          dnf install -y docker
+          systemctl enable --now docker
+
+          cat > /usr/local/bin/deploy.sh <<'SCRIPT'
+          #!/bin/bash
+          # Takes one fully qualified image reference and makes it the running container.
+          # Kept on the instance rather than inlined into the SSM command so that what
+          # runs here is reviewable in the repository, not buried in a workflow string.
+          set -euo pipefail
+
+          IMAGE="$1"
+          REGISTRY="${!IMAGE%%/*}"
+
+          aws ecr get-login-password --region ${AWS::Region} \
+            | docker login --username AWS --password-stdin "$REGISTRY"
+
+          docker pull "$IMAGE"
+          docker rm -f vehicle-explorer >/dev/null 2>&1 || true
+
+          docker run -d \
+            --name vehicle-explorer \
+            --restart unless-stopped \
+            -p 80:8080 \
+            -e ASPNETCORE_ENVIRONMENT=Production \
+            "$IMAGE"
+
+          # The running image is in use and survives this; only superseded ones go.
+          docker image prune -af
+          SCRIPT
+
+          chmod +x /usr/local/bin/deploy.sh
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}"
+
+  # ----------------------------------------------------------------------------------
+  # CloudFront. It is here for the certificate: *.cloudfront.net gives the application
+  # HTTPS without a domain to buy or a certificate to renew.
+  # ----------------------------------------------------------------------------------
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Sub "${AWS::StackName}"
+        DefaultRootObject: index.html
+        # Middle East edge locations are in 200 but not in 100, which is where this is
+        # being demonstrated from.
+        PriceClass: PriceClass_200
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        Origins:
+          - Id: instance
+            DomainName: !Sub
+              - "ec2-${DashedIp}.${AWS::Region}.compute.amazonaws.com"
+              - DashedIp: !Join ["-", !Split [".", !GetAtt ElasticIp.PublicIp]]
+            CustomOriginConfig:
+              # The instance serves plain HTTP. TLS is CloudFront's job, which is why the
+              # application disables HTTPS redirection in Production.
+              OriginProtocolPolicy: http-only
+              HTTPPort: 80
+              OriginReadTimeout: 30
+        DefaultCacheBehavior:
+          TargetOriginId: instance
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD]
+          Compress: true
+          # Vite fingerprints asset filenames, so these are safe to cache hard.
+          CachePolicyId: !FindInMap [CloudFrontPolicies, Cache, Optimized]
+        CacheBehaviors:
+          # Responses vary by query string and must never be served stale.
+          - PathPattern: /api/*
+            TargetOriginId: instance
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS]
+            Compress: true
+            CachePolicyId: !FindInMap [CloudFrontPolicies, Cache, Disabled]
+            OriginRequestPolicyId: !FindInMap [CloudFrontPolicies, OriginRequest, AllViewerExceptHostHeader]
+          # The one file whose name never changes. Cached, it would keep pointing at the
+          # previous deploy's fingerprinted bundles long after they were pruned.
+          - PathPattern: /index.html
+            TargetOriginId: instance
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            CachePolicyId: !FindInMap [CloudFrontPolicies, Cache, Disabled]
+          - PathPattern: /health
+            TargetOriginId: instance
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            CachePolicyId: !FindInMap [CloudFrontPolicies, Cache, Disabled]
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+
+  # ----------------------------------------------------------------------------------
+  # Deployment identity. GitHub presents a short-lived OIDC token and receives temporary
+  # credentials, so no AWS key material exists to be stored or leaked.
+  # ----------------------------------------------------------------------------------
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: ShouldCreateOidcProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AWS::StackName}-github-deploy"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # Pinned to one branch of one repository. A fork, a pull request from
+                # one, or any other repo presents a different subject and is refused.
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubRepo}:ref:refs/heads/${GitHubBranch}"
+      Policies:
+        - PolicyName: push-image-and-redeploy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # The token call is not resource-scoped; AWS only accepts "*" here.
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:CompleteLayerUpload
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource: !GetAtt Repository.Arn
+              # Restart the container on this one instance, using only the shell
+              # document. Not ssm:* on "*", which would be a shell on every future box.
+              - Effect: Allow
+                Action: ssm:SendCommand
+                Resource:
+                  - !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/${Instance}"
+                  - !Sub "arn:aws:ssm:${AWS::Region}::document/AWS-RunShellScript"
+              - Effect: Allow
+                Action:
+                  - ssm:GetCommandInvocation
+                  - ssm:ListCommandInvocations
+                Resource: "*"
+
+Outputs:
+  SiteUrl:
+    Description: The application. HTTPS is served by CloudFront's own certificate.
+    Value: !Sub "https://${Distribution.DomainName}"
+
+  RepositoryUri:
+    Description: Push target for the image.
+    Value: !GetAtt Repository.RepositoryUri
+
+  InstanceId:
+    Description: Store as the EC2_INSTANCE_ID repository secret.
+    Value: !Ref Instance
+
+  DeployRoleArn:
+    Description: Store as the AWS_DEPLOY_ROLE_ARN repository secret.
+    Value: !GetAtt DeployRole.Arn
+
+  OriginAddress:
+    Description: Instance address. Reachable only from CloudFront by design.
+    Value: !GetAtt ElasticIp.PublicIp

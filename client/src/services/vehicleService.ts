@@ -3,7 +3,10 @@
  * catalogue records and errors, never in URLs, query strings or status codes.
  */
 
-const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5020').replace(/\/$/, '');
+// Unset means same origin, which is how the container serves it: the API hosts the
+// built client, so a relative path reaches the API it was served from. Development
+// overrides this in .env.development, where the Vite server is a separate origin.
+const baseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 /** Every catalogue endpoint returns the same shape. */
 export interface CatalogItem {
