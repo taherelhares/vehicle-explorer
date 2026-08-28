@@ -1,11 +1,11 @@
 name: deploy
 
-# Every push to main becomes a running container. The image is tagged with the commit
+# Every push to master becomes a running container. The image is tagged with the commit
 # SHA rather than "latest", so what is deployed is always traceable to a commit and a
 # rollback is a redeploy of an earlier tag rather than a rebuild.
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 concurrency:
