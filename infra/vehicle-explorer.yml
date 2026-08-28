@@ -22,8 +22,8 @@ Parameters:
     Type: String
     Description: >
       Managed prefix list for CloudFront origin-facing IPs, so the instance answers
-      CloudFront and nothing else. Find it with:
-      aws ec2 describe-managed-prefix-lists --region me-central-1
+      CloudFront and nothing else. The id differs per region; find it with:
+      aws ec2 describe-managed-prefix-lists --region <region>
         --filters Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing
         --query "PrefixLists[0].PrefixListId" --output text
     AllowedPattern: "^pl-[0-9a-f]+$"
@@ -45,7 +45,9 @@ Parameters:
   InstanceType:
     Type: String
     Default: t3.micro
-    Description: t3.micro is the free-tier-eligible size. t2.micro is not offered in me-central-1.
+    Description: >
+      The free-tier-eligible size. Legacy free tier accounts get t2.micro in most
+      regions and t3.micro where t2 is not offered; t3.micro is the safe default.
 
   LatestAmiId:
     Type: "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
@@ -56,6 +58,9 @@ Parameters:
 
 Conditions:
   ShouldCreateOidcProvider: !Equals [!Ref CreateOidcProvider, "yes"]
+  # us-east-1 predates the regional naming scheme and uses compute-1.amazonaws.com
+  # rather than us-east-1.compute.amazonaws.com. Every other region follows the pattern.
+  IsUsEast1: !Equals [!Ref "AWS::Region", us-east-1]
 
 Mappings:
   # CloudFront managed policies. These ids are the same in every account and region.
@@ -281,9 +286,14 @@ Resources:
         IPV6Enabled: true
         Origins:
           - Id: instance
-            DomainName: !Sub
-              - "ec2-${DashedIp}.${AWS::Region}.compute.amazonaws.com"
-              - DashedIp: !Join ["-", !Split [".", !GetAtt ElasticIp.PublicIp]]
+            DomainName: !If
+              - IsUsEast1
+              - !Sub
+                - "ec2-${DashedIp}.compute-1.amazonaws.com"
+                - DashedIp: !Join ["-", !Split [".", !GetAtt ElasticIp.PublicIp]]
+              - !Sub
+                - "ec2-${DashedIp}.${AWS::Region}.compute.amazonaws.com"
+                - DashedIp: !Join ["-", !Split [".", !GetAtt ElasticIp.PublicIp]]
             CustomOriginConfig:
               # The instance serves plain HTTP. TLS is CloudFront's job, which is why the
               # application disables HTTPS redirection in Production.
