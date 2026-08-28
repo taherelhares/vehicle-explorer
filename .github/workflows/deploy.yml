@@ -28,17 +28,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Temporary. Requests the OIDC token this job would present to STS and prints its
-      # claims, so the trust policy can be matched against what GitHub actually sends
-      # rather than what the documentation implies it sends. Remove once green.
-      - name: Show the real OIDC claims
-        run: |
-          TOKEN=$(curl -sS \
-            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
-          echo "$TOKEN" | python3 -c "import sys,base64,json;p=sys.stdin.read().strip().split('.')[1];p+='='*(-len(p)%4);c=json.loads(base64.urlsafe_b64decode(p));print(json.dumps({k:c[k] for k in ('sub','aud','repository','repository_id','repository_owner','repository_owner_id','ref','environment') if k in c},indent=2))"
-          echo "arn length = $(printf '%s' '${{ secrets.AWS_DEPLOY_ROLE_ARN }}' | wc -c)"
-
       - uses: actions/checkout@v4
 
       - name: Assume the deploy role
