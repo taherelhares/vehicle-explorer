@@ -18,6 +18,37 @@ Parameters:
     Default: main
     Description: Only pushes to this branch may assume the deploy role.
 
+  GitHubEnvironment:
+    Type: String
+    Default: ""
+    Description: >
+      Name of the GitHub Environment the deploy job declares, if any. A job that
+      references an environment presents environment:<name> as its subject scope
+      instead of ref:refs/heads/<branch>. Leave empty for a branch-scoped trust.
+
+  SubjectFormat:
+    Type: String
+    Default: immutable
+    AllowedValues: [immutable, legacy]
+    Description: >
+      Repositories created on or after 15 July 2026 present an immutable subject that
+      embeds numeric owner and repository ids, so a renamed or recreated repository
+      cannot inherit the trust. Older repositories present the name-only legacy form.
+
+  GitHubOwnerId:
+    Type: String
+    Default: ""
+    Description: >
+      Numeric account id of the owner. Required when SubjectFormat is immutable.
+      curl -s https://api.github.com/users/<owner> | jq .id
+
+  GitHubRepositoryId:
+    Type: String
+    Default: ""
+    Description: >
+      Numeric id of the repository. Required when SubjectFormat is immutable.
+      curl -s https://api.github.com/repos/<owner>/<repo> | jq .id
+
   CloudFrontPrefixListId:
     Type: String
     Description: >
@@ -61,6 +92,8 @@ Conditions:
   # us-east-1 predates the regional naming scheme and uses compute-1.amazonaws.com
   # rather than us-east-1.compute.amazonaws.com. Every other region follows the pattern.
   IsUsEast1: !Equals [!Ref "AWS::Region", us-east-1]
+  UseImmutableSubject: !Equals [!Ref SubjectFormat, immutable]
+  UseEnvironmentScope: !Not [!Equals [!Ref GitHubEnvironment, ""]]
 
 Mappings:
   # CloudFront managed policies. These ids are the same in every account and region.
@@ -360,9 +393,26 @@ Resources:
             Condition:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
-                # Pinned to one branch of one repository. A fork, a pull request from
-                # one, or any other repo presents a different subject and is refused.
-                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubRepo}:ref:refs/heads/${GitHubBranch}"
+                # Pinned to one branch (or one environment) of one repository. A fork, a
+                # pull request from one, or any other repo presents a different subject
+                # and is refused. Assembled rather than written out because the shape
+                # varies: immutable repositories embed numeric ids, and a job running in
+                # an environment is scoped by environment name instead of by ref.
+                token.actions.githubusercontent.com:sub: !Join
+                  - ":"
+                  - - repo
+                    - !If
+                      - UseImmutableSubject
+                      - !Sub
+                        - "${Owner}@${GitHubOwnerId}/${Name}@${GitHubRepositoryId}"
+                        - Owner: !Select [0, !Split ["/", !Ref GitHubRepo]]
+                          Name: !Select [1, !Split ["/", !Ref GitHubRepo]]
+                      - !Ref GitHubRepo
+                    - !If [UseEnvironmentScope, environment, ref]
+                    - !If
+                      - UseEnvironmentScope
+                      - !Ref GitHubEnvironment
+                      - !Sub "refs/heads/${GitHubBranch}"
       Policies:
         - PolicyName: push-image-and-redeploy
           PolicyDocument:
