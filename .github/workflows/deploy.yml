@@ -46,6 +46,11 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
+          # The action tags the session by default, which STS only permits if the trust
+          # policy also grants sts:TagSession. The tags buy nothing here — one workflow,
+          # one role — so the session goes untagged rather than the role's trust being
+          # widened to allow something unused.
+          role-skip-session-tagging: true
 
       - name: Log in to ECR
         id: ecr
